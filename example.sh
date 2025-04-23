@@ -18,10 +18,3 @@ curl -X POST "http://localhost:8000/ingest" \
   }'
 
 
-
-curl -X POST "http://localhost:8001/predict" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "inputs": [[1.2, 3.4, 5.6, 7.8]],
-    "model_version": "latest"
-  }'
