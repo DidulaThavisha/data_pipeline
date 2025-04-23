@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+requests
+celery
+redis
+pydantic
+python-dotenv
+python-multipart
+aiohttp
+scikit-learn

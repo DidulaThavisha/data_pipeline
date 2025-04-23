@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  ml_api:
+    build: .
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./models:/app/models
+      - ./metrics:/app/metrics
+    restart: always
+
+  prometheus:
+    image: prom/prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    depends_on:
+      - ml_api
+
+  grafana:
+    image: grafana/grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+volumes:
+  grafana_data:
