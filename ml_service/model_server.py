@@ -3,11 +3,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 import torch
-import json
+import time
+
 import os
 import logging
 from datetime import datetime
 import numpy as np
+from starlette.responses import Response
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST, CollectorRegistry, Counter, Histogram
 
 from model_loader import ModelManager
 from monitoring import ModelMonitor
@@ -39,6 +42,14 @@ app.add_middleware(
 model_manager = ModelManager()
 model_monitor = ModelMonitor()
 
+# --- Prometheus Metrics ---
+# Create a registry for Prometheus metrics
+registry = CollectorRegistry()
+# Example custom metrics (you can add more specific ones)
+request_counter = Counter("api_requests_total", "Total number of API requests", ["endpoint", "method", "status_code"], registry=registry)
+prediction_latency = Histogram("api_prediction_latency_seconds", "Latency of predictions", ["model_version"], registry=registry)
+# --------------------------
+
 class PredictionRequest(BaseModel):
     inputs: List[List[float]]
     model_version: Optional[str] = "latest"
@@ -55,7 +66,15 @@ async def startup_event():
 
 @app.get("/")
 async def root():
+    request_counter.labels(endpoint="/", method="GET", status_code=200).inc() # Example metric increment
     return {"message": "ML Model Serving API is running"}
+
+# --- Add Prometheus Metrics Endpoint ---
+@app.get("/metrics")
+async def metrics():
+    """Expose Prometheus metrics."""
+    return Response(generate_latest(registry), media_type=CONTENT_TYPE_LATEST)
+# -------------------------------------
 
 @app.get("/models")
 async def list_models():
@@ -65,41 +84,55 @@ async def list_models():
 @app.post("/predict", response_model=PredictionResponse)
 async def predict(request: PredictionRequest, background_tasks: BackgroundTasks):
     """Make predictions using the specified model version"""
+    status_code = 500 # Default to error
+    model_version_label = "unknown"
+    start_timer = time.time() # Use time.time for latency calculation
     try:
         # Get the model
         model, model_version = model_manager.get_model(request.model_version)
-        
+        model_version_label = model_version # Set label for metrics
+
         # Convert inputs to tensor
         inputs = torch.tensor(request.inputs, dtype=torch.float32)
-        
-        # Record start time
-        start_time = datetime.now()
-        
+
+        # Record start time (for application logic, keep using datetime if needed elsewhere)
+        start_time_dt = datetime.now()
+
         # Run inference
         with torch.no_grad():
             outputs = model(inputs).numpy().tolist()
-        
-        # Calculate inference time
-        inference_time = (datetime.now() - start_time).total_seconds() * 1000
-        
+
+        # Calculate inference time (for application logic)
+        inference_time_ms = (datetime.now() - start_time_dt).total_seconds() * 1000
+
         # Log prediction asynchronously
         background_tasks.add_task(
             model_monitor.log_prediction,
             model_version,
             request.inputs,
             outputs,
-            inference_time
+            inference_time_ms
         )
-        
-        return {
+
+        status_code = 200 # Set status code for success
+        response_data = {
             "predictions": outputs,
             "model_version": model_version,
-            "inference_time_ms": inference_time
+            "inference_time_ms": inference_time_ms
         }
-    
+        # Record latency metric on success
+        latency = time.time() - start_timer
+        prediction_latency.labels(model_version=model_version_label).observe(latency)
+        return response_data
+
     except Exception as e:
         logger.error(f"Prediction error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # Ensure status_code remains 500 or set appropriately
+        status_code = 500 # Or map specific exceptions to other codes
+        raise HTTPException(status_code=status_code, detail=str(e))
+    finally:
+        # Increment request counter regardless of success/failure
+        request_counter.labels(endpoint="/predict", method="POST", status_code=status_code).inc()
 
 @app.post("/models/upload")
 async def upload_model(
@@ -158,4 +191,5 @@ async def activate_model(version: str):
 
 if __name__ == "__main__":
     import uvicorn
+    import time
     uvicorn.run("model_server:app", host="0.0.0.0", port=8001, reload=True)

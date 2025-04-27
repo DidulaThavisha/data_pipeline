@@ -38,7 +38,8 @@ async def root():
 @app.post("/ingest", response_model=schemas.JobResponse)
 async def ingest_data(request: schemas.DataIngestionRequest):
     """Start a new data ingestion job."""
-    job_id = start_ingestion_job(request.sources, request.transformation_rules)
+    job_id, request = start_ingestion_job(request.sources, request.transformation_rules)
+    # return {"job_id": job_id, "status": request.status}
     return {"job_id": job_id, "status": "processing"}
 
 @app.get("/jobs/{job_id}", response_model=schemas.JobStatus)

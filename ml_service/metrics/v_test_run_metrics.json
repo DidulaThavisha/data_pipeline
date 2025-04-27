@@ -1,0 +1,7 @@
+{
+  "total_predictions": 3,
+  "avg_inference_time_ms": 169.73999999999998,
+  "min_inference_time_ms": 78.47800000000001,
+  "max_inference_time_ms": 352.24499999999995,
+  "last_updated": "2025-04-27T20:57:50.767839"
+}

@@ -20,7 +20,7 @@ services:
 
   worker:
     build: .
-    command: celery -A data_ingestion.celery_app worker --loglevel=info
+    command: celery -A data_ingestion.celery worker --loglevel=info
     volumes:
       - .:/app
     environment:

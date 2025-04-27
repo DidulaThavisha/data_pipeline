@@ -1,7 +1,6 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, HttpUrl
 from typing import Any, Dict, List, Union
 import json
-from pydantic import HttpUrl
 
 def ensure_serializable(obj: Any) -> Any:
     """Ensure an object is JSON serializable, converting special types when needed."""

@@ -15,7 +15,7 @@ from utils import serialize_pydantic
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
 
 # Configure Celery with the Redis URL from environment variable
-celery_app = Celery(
+celery = Celery(
     'data_pipeline',
     broker=REDIS_URL,
     backend=REDIS_URL
@@ -52,9 +52,9 @@ def start_ingestion_job(sources, transformation_rules=None):
     # Start the Celery task asynchronously
     process_data.delay(job_id, serializable_sources, serializable_transformation_rules)
     
-    return job_id
+    return job_id, request
 
-@celery_app.task(bind=True, max_retries=3)
+@celery.task(bind=True, max_retries=3)
 def process_data(self, job_id, sources, transformation_rules=None):
     """Process data from multiple sources and apply transformations."""
     db = SessionLocal()
@@ -65,7 +65,9 @@ def process_data(self, job_id, sources, transformation_rules=None):
             logger.error(f"Job ID {job_id} not found")
             return
         
+        logger.info(f"Processing job {job_id} with sources: {sources}")
         request.status = "processing"
+
         db.commit()
         
         records_processed = 0
@@ -74,6 +76,7 @@ def process_data(self, job_id, sources, transformation_rules=None):
         for source in sources:
             try:
                 # Fetch data based on source type
+                logger.info(f"Fetching data from {source['url']}")
                 if source["source_type"] == "rest":
                     data = fetch_rest_data(source["url"], source.get("headers"), source.get("params"))
                 elif source["source_type"] == "graphql":
@@ -81,7 +84,7 @@ def process_data(self, job_id, sources, transformation_rules=None):
                 else:
                     logger.warning(f"Unsupported source type: {source['source_type']}")
                     continue
-                
+                request.status = "before_transformation"
                 # Apply transformations
                 if transformation_rules:
                     data = apply_transformations(data, transformation_rules)
